@@ -78,6 +78,10 @@ from binance.exceptions import BinanceAPIException
 from binance.helpers import round_step_size
 from requests.exceptions import ReadTimeout, ConnectionError
 
+#multi exchange api
+import ccxt
+
+
 # used for dates
 from datetime import date, datetime, timedelta
 import time
