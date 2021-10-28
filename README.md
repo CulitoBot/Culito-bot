@@ -1,8 +1,8 @@
-# Binance Volitility Trading Bot
+# Culito Bot
 
 ## Description
-This Binance trading bot analyses the changes in price across all coins on Binance and place trades on the most volatile ones. 
-In addition to that, this Binance trading algorithm will also keep track of all the coins bought and sell them according to your specified Stop Loss and Take Profit.
+This Multi-exchange trading bot analyses the changes in price across all coins on exchange and place trades on the most volatile ones. 
+In addition to that, this trading algorithm will also keep track of all the coins bought and sell them according to your specified Stop Loss and Take Profit.
 
 The bot will listen to changes in price accross all coins on Binance. By default, we're only picking USDT pairs. We're excluding Margin (like BTCDOWNUSDT) and Fiat pairs
 
