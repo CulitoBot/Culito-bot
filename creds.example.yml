@@ -7,6 +7,7 @@
 
 
 prod:
+  exchange_id: binance
   access_key: replace_me
   secret_key: replace_me
 discord:
