@@ -7,13 +7,16 @@ script_options:
   LOG_FILE: 'trades.txt'
   DEBUG: True
 
-  # Set this to true if you are accessing binance from within the United States of America
-  # Need to change TLD
-  AMERICAN_USER: False
-
+  
 # These options apply to the trading methods the script executes
 trading_options:
- 
+  
+  #Select market: spot or futures
+  MARKET: futures
+  
+  #Set leverage only for futures
+  LEVERAGE: 1
+
   # select your base currency to use for trading (trade for example USDT pairs)
   PAIR_WITH: USDT
 
