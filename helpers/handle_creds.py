@@ -4,7 +4,7 @@ from sys import exit
 def load_correct_creds(creds):
     try:
 
-        return creds['prod']['exchange_id'], creds['prod']['secret_key']
+        return creds['prod']['exchange_id'], creds['prod']['api_key'], creds['prod']['secret_key']
     
     except TypeError as te:
         message = 'Your credentials are formatted incorectly\n'
