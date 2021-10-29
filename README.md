@@ -1,4 +1,4 @@
-# Culito Bot
+# Culito Bot(in development)
 
 ## Description
 This Multi-exchange trading bot analyses the changes in price across all coins on exchange and place trades on the most volatile ones. 
