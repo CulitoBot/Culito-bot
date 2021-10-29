@@ -1218,9 +1218,11 @@ if __name__ == '__main__':
     LOG_FILE = parsed_config['script_options'].get('LOG_FILE')
     HISTORY_LOG_FILE = "history.txt"
     DEBUG_SETTING = parsed_config['script_options'].get('DEBUG')
-    AMERICAN_USER = parsed_config['script_options'].get('AMERICAN_USER')
+    
 
     # Load trading vars
+    MARKET = parsed_config['trading_options'].get('MARKET')
+    LEVERAGE = parsed_config['trading_options'].get('LEVERAGE')
     PAIR_WITH = parsed_config['trading_options']['PAIR_WITH']
     TRADE_TOTAL = parsed_config['trading_options']['TRADE_TOTAL']
     TRADE_SLOTS = parsed_config['trading_options']['TRADE_SLOTS']
@@ -1272,7 +1274,7 @@ if __name__ == '__main__':
         DEBUG = True
 
     # Load creds for correct environment
-    access_key, secret_key = load_correct_creds(parsed_creds)
+    exchange_id, access_key, secret_key = load_correct_creds(parsed_creds)
 
     if DEBUG:
         print(f'Loaded config below\n{json.dumps(parsed_config, indent=4)}')
@@ -1284,28 +1286,33 @@ if __name__ == '__main__':
     sell_all_coins = False
 
     # Authenticate with the client, Ensure API key is good before continuing
-    if AMERICAN_USER:
-        client = Client(access_key, secret_key, tld='us')
-    else:
-        client = Client(access_key, secret_key)
-
+exchange_class = getattr(ccxt, exchange_id)  
+client = exchange_class({
+    'apiKey': access_key,
+    'secret': secret_key,
+})
     # If the users has a bad / incorrect API key.
     # this will stop the script from starting, and display a helpful error.
-    api_ready, msg = test_api_key(client, BinanceAPIException)
-    if api_ready is not True:
-        exit(f'{txcolors.SELL_LOSS}{msg}{txcolors.DEFAULT}')
+#***    api_ready, msg = test_api_key(client, BinanceAPIException)
+#***    if api_ready is not True:
+#***        exit(f'{txcolors.SELL_LOSS}{msg}{txcolors.DEFAULT}')
+
+#If test mode enable the Testmode/sandbox 
+#immediately after creating the exchange before any other call!              
+     if TEST_MODE:
+        client.set_sandbox_mode(True)
+        
+        file_prefix = 'test_'
+    else:
+        file_prefix = 'live_'
+
 
     # Use CUSTOM_LIST symbols if CUSTOM_LIST is set to True
     if CUSTOM_LIST: tickers=[line.strip() for line in open(TICKERS_LIST)]
 
     # try to load all the coins bought by the bot if the file exists and is not empty
     coins_bought = {}
-
-    if TEST_MODE:
-        file_prefix = 'test_'
-    else:
-        file_prefix = 'live_'
-
+    
     # path to the saved coins_bought file
     coins_bought_file_path = file_prefix + 'coins_bought.json'
 
