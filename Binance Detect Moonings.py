@@ -1,6 +1,6 @@
 """
 Olorin Sledge Fork
-Version: 1.24
+Version: 1.28
 
 Disclaimer
 
@@ -23,7 +23,7 @@ See requirements.txt for versions of modules needed
     3) If it is a pausebot signal, you need to create a signals/pausebot.pause file
     All these changes are within the external signal itself and is really easy to do via Find/Replace (advice you manually review any replace you do).
 
-FUNCTIONALITY:
+FUNCTIONALITY
 - Changed way profit % is calculated to be based on ROI
 - More details provided on screen on state of bot (i.e.  unrealised session profit, session profit, all time profit, bot paused or not etc)
 - Totally reworked external signals. NOTE: you CANNOT use the default signals anymore with my bot unless you modify them to work with it
@@ -37,6 +37,11 @@ FUNCTIONALITY:
 - BNB is no longer used as the reference for TIME_DIFFERENCE, this allows one to not have it in their tickers.txt list.
 - Tickers list can now auto reload (if set in the config.yml file)
 - Held coins displayed in a Table format
+- Market profit vs Bot profit comparison
+- Restart an external signal every hour
+- Sell a specific coin on stopping bot funciton
+- Bot can reinvest any profits from coins sold so as to compound your profits. Please note, this will also compound any losses so use with care.
+  Configurable in configy.yml with REINVEST_PROFITS flag.
 
 Added version 1.20:
 - Has a "Market Profit". This is a comparison between your bots profits and if you had just bought BTC instead when you started your bot.
@@ -46,6 +51,40 @@ Added version 1.20:
 Added version 1.21:
 - Ability to "restart" an external signal via the RESTART_EXTSIGNALS setting. Please only use this is you know what you are doing. 99% of the time
       you will want this to be False
+
+Added version 1.25:
+- "BUYING MODE" added to summary info so you can easily tell if you are in Test mode or Live mode
+- "External Signals" added to summary info so you can tell which external signals you have running
+
+Added version 1.26:
+- "Sell A Specific Coin" feature enhancement added. When you end the bot, it gives you the option to sell a specific coin.
+  1. The bot will display the coins you can sell in a table
+  2. Type in the SYMBOL including the pair and the bot will sell it.
+  3. It will loop 1 to 2 until you choose N
+  4. Bot ends
+
+Added version 1.27
+- Menu system on stopping (CTRL+C) the bot for options to: Exit bot, sell all coins, sell specific coin, resume bot
+
+Added version 1.28
+- Reinvest profits, and losses, to compound capital
+
+DONATIONS
+If you feel you would like to donate to me, for all the above improvements, I would greatly appreciate it. Please see donation options below.
+
+Bitcoin (BTC network): 1DMRzMWXRXLeTQ9mfN9uvMTeJHmkkG5oS8
+Etherium (ERC-20 network): 0x69566c866817c593d8a40a1b672afa3b7cfd69bf
+Matic (Polygon network): 0x69566c866817c593d8a40a1b672afa3b7cfd69bf
+BNB (BEP20 network): 0x69566c866817c593d8a40a1b672afa3b7cfd69bf
+Fantom (FTM network): 0x69566c866817c593d8a40a1b672afa3b7cfd69bf
+Algo (Algorand network): ML72MOJ7N3O4G4EGDLKICNOCMIBCH4U5I34WCXZ4B4HREPBA3ME7BOYPB4
+Nano (Nano network): nano_1en6m9rx9wgwqu5e1otedzprpgjbnrjs43gi9g94r5nu31ikc1heytt8qd74
+
+ORIGINAL BOT CREATOR
+This bot was forked from the original creation by CyberPunkMetalHead.
+You can find his repository of projects at https://github.com/CyberPunkMetalHead.
+You can find details to donate to him at his website, https://www.cryptomaton.org.
+
 """
 
 # use for environment variables
@@ -113,7 +152,11 @@ class txcolors:
     SELL_PROFIT = '\033[32m'
     DIM = '\033[2m\033[35m'
     DEFAULT = '\033[39m'
-
+    YELLOW = '\033[33m'
+    CYAN = '\033[96m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    ENDC = '\033[0m'
 
 # tracks profit/loss each session
 global session_profit_incfees_perc, session_profit_incfees_total, session_tpsl_override_msg, is_bot_running
@@ -123,7 +166,7 @@ session_tpsl_override_msg = ""
 is_bot_running = True
 
 global historic_profit_incfees_perc, historic_profit_incfees_total, trade_wins, trade_losses
-global sell_all_coins, bot_started_datetime, market_startprice, market_currprice
+global sell_all_coins, bot_started_datetime, market_startprice, market_currprice, sell_specific_coin
 
 try:
     historic_profit_incfees_perc
@@ -191,6 +234,13 @@ def print_table(table):
     print('')
     sys.stdout = old_out
     print(table)
+    sys.stdout = St_ampe_dOut()
+
+def print_notimestamp(msg):
+    global old_out
+
+    sys.stdout = old_out
+    print(msg, end = ' ')
     sys.stdout = St_ampe_dOut()
 
 def get_price(add_to_historical=True):
@@ -403,10 +453,32 @@ def balance_report(last_price):
     
     market_profit = ((market_currprice - market_startprice)/ market_startprice) * 100
 
+    mode = "Live (REAL MONEY)"
+    discord_mode = "Live"
+    if TEST_MODE:
+        mode = "Test (no real money used)"
+        discord_mode = "Test"
+
+    font = f'{txcolors.ENDC}{txcolors.YELLOW}{txcolors.BOLD}{txcolors.UNDERLINE}'
+    extsigs = ""
+    try:
+        for module in SIGNALLING_MODULES:
+            if extsigs == "":
+                extsigs = module
+            else:
+                extsigs = extsigs + ', ' + module
+    except Exception as e:
+        pass
+    if extsigs == "":
+        extsigs = "No external signals running"
+
     print(f'')
     print(f'--------')
     print(f"STARTED         : {str(bot_started_datetime).split('.')[0]} | Running for: {str(datetime.now() - bot_started_datetime).split('.')[0]}")
     print(f'CURRENT HOLDS   : {len(coins_bought)}/{TRADE_SLOTS} ({float(CURRENT_EXPOSURE):g}/{float(INVESTMENT_TOTAL):g} {PAIR_WITH})')
+    if REINVEST_PROFITS:
+        print(f'ADJ TRADE TOTAL : {TRADE_TOTAL:.2f} (Current TRADE TOTAL adjusted to reinvest profits)')
+    print(f'BUYING MODE     : {font if mode == "Live (REAL MONEY)" else txcolors.DEFAULT}{mode}{txcolors.DEFAULT}{txcolors.ENDC}')
     print(f'Buying Paused   : {bot_paused}')
     print(f'')
     print(f'SESSION PROFIT (Inc Fees)')
@@ -419,13 +491,13 @@ def balance_report(last_price):
     print(f'Bot Profit      : {txcolors.SELL_PROFIT if historic_profit_incfees_perc > 0. else txcolors.SELL_LOSS}{historic_profit_incfees_perc:.4f}% Est:${historic_profit_incfees_total:.4f} {PAIR_WITH}{txcolors.DEFAULT}')
     print(f'Completed Trades: {trade_wins+trade_losses} (Wins:{trade_wins} Losses:{trade_losses})')
     print(f'Win Ratio       : {float(WIN_LOSS_PERCENT):g}%')
-    
+    print(f'')
+    print(f'External Signals: {extsigs}')
     print(f'--------')
     print(f'')
-    
     #msg1 = str(bot_started_datetime) + " | " + str(datetime.now() - bot_started_datetime)
     msg1 = str(datetime.now()).split('.')[0]
-    msg2 = " | " + str(len(coins_bought)) + "/" + str(TRADE_SLOTS) + " | PBOT: " + str(bot_paused)
+    msg2 = " | " + str(len(coins_bought)) + "/" + str(TRADE_SLOTS) + " | PBOT: " + str(bot_paused) + " | MODE: " + str(discord_mode)
     msg2 = msg2 + ' SPR%: ' + str(round(session_profit_incfees_perc,2)) + ' SPR$: ' + str(round(session_profit_incfees_total,4))
     msg2 = msg2 + ' SPU%: ' + str(round(unrealised_session_profit_incfees_perc,2)) + ' SPU$: ' + str(round(unrealised_session_profit_incfees_total,4))
     msg2 = msg2 + ' SPT%: ' + str(round(session_profit_incfees_perc + unrealised_session_profit_incfees_perc,2)) + ' SPT$: ' + str(round(session_profit_incfees_total+unrealised_session_profit_incfees_total,4))
@@ -638,10 +710,11 @@ def buy():
     return orders, last_price, volume
 
 
-def sell_coins(tpsl_override = False):
+def sell_coins(tpsl_override = False, specific_coin_to_sell = ""):
     '''sell coins that have reached the STOP LOSS or TAKE PROFIT threshold'''
-    global hsp_head, session_profit_incfees_perc, session_profit_incfees_total, coin_order_id, trade_wins, trade_losses, historic_profit_incfees_perc, historic_profit_incfees_total, sell_all_coins
+    global hsp_head, session_profit_incfees_perc, session_profit_incfees_total, coin_order_id, trade_wins, trade_losses, historic_profit_incfees_perc, historic_profit_incfees_total, sell_all_coins, sell_specific_coin
     
+    global TRADE_TOTAL
     externals = sell_external_signals()
     
     last_price = get_price(False) # don't populate rolling window
@@ -664,7 +737,8 @@ def sell_coins(tpsl_override = False):
     my_table.align["Time Held"] = "l"
 
     for coin in list(coins_bought):
-        
+        if sell_specific_coin and not specific_coin_to_sell == coin:
+            continue
         #time_held = timedelta(seconds=datetime.now().timestamp()-coins_bought[coin]['timestamp'])
         time_held = timedelta(seconds=datetime.now().timestamp()-int(str(coins_bought[coin]['timestamp'])[:10]))
 
@@ -696,7 +770,7 @@ def sell_coins(tpsl_override = False):
 
         # check that the price is above the take profit and readjust SL and TP accordingly if trialing stop loss used
         #if LastPrice > TP and USE_TRAILING_STOP_LOSS and not sell_all_coins and not tpsl_override:
-        if LastPriceLessFees > TP and USE_TRAILING_STOP_LOSS and not sell_all_coins and not tpsl_override:
+        if LastPriceLessFees > TP and USE_TRAILING_STOP_LOSS and not sell_all_coins and not tpsl_override and not sell_specific_coin:
             # increasing TP by TRAILING_TAKE_PROFIT (essentially next time to readjust SL)
 
             #if PriceChange_Perc >= 0.8:
@@ -755,6 +829,9 @@ def sell_coins(tpsl_override = False):
         if sell_all_coins:
             sellCoin = True
             sell_reason = 'Sell All Coins'
+        if sell_specific_coin:
+            sellCoin = True
+            sell_reason = 'Sell Specific Coin'
         if tpsl_override:
             sellCoin = True
             sell_reason = session_tpsl_override_msg
@@ -815,6 +892,10 @@ def sell_coins(tpsl_override = False):
                 #write_log(f"\tSell\t{coin}\t{coins_sold[coin]['volume']}\t{BuyPrice}\t{PAIR_WITH}\t{LastPrice}\t{profit_incfees_total:.{decimals()}f}\t{PriceChange_Perc:.2f}\t{sell_reason}")
                 write_log(f"\tSell\t{coin}\t{coins_sold[coin]['volume']}\t{BuyPrice}\t{PAIR_WITH}\t{LastPrice}\t{profit_incfees_total:.{decimals()}f}\t{PriceChangeIncFees_Perc:.2f}\t{sell_reason}")
                 
+                #reinvest profits
+                if REINVEST_PROFITS:
+                    TRADE_TOTAL += (profit_incfees_total / TRADE_SLOTS)
+
                 #this is good
                 session_profit_incfees_total = session_profit_incfees_total + profit_incfees_total
                 session_profit_incfees_perc = session_profit_incfees_perc + ((profit_incfees_total/BUDGET) * 100)
@@ -831,7 +912,7 @@ def sell_coins(tpsl_override = False):
                     trade_losses += 1
 
                 update_bot_stats()
-                if not sell_all_coins:
+                if not sell_all_coins and not sell_specific_coin:
                     # within sell_all_coins, it will print display to screen
                     balance_report(last_price)
 
@@ -1003,7 +1084,7 @@ def update_bot_stats():
     global trade_wins, trade_losses, historic_profit_incfees_perc, historic_profit_incfees_total
 
     bot_stats = {
-        'total_capital' : str(TRADE_SLOTS * TRADE_TOTAL),
+        'total_capital' : TRADE_SLOTS * TRADE_TOTAL,
         'botstart_datetime' : str(bot_started_datetime),
         'historicProfitIncFees_Percent': historic_profit_incfees_perc,
         'historicProfitIncFees_Total': historic_profit_incfees_total,
@@ -1074,6 +1155,21 @@ def sell_all(msgreason, session_tspl_ovr = False):
     discordmsg = balance_report(last_price)
     msg_discord(discordmsg)
 
+    sell_all_coins = False
+
+def sell_a_specific_coin(coin):
+    global sell_specific_coin
+
+    msg_discord(f'{str(datetime.now())} | SELL SPECIFIC COIN: {coin}')
+
+    # sell all coins NOW!
+    sell_specific_coin = True
+
+    coins_sold = sell_coins(False, coin)
+    remove_from_portfolio(coins_sold)
+
+    sell_specific_coin = False
+    
 def restart_signal_threads():
     try:
         for signalthread in signalthreads:
@@ -1253,6 +1349,9 @@ if __name__ == '__main__':
     # Used to push alerts, messages etc to a discord channel
     MSG_DISCORD = parsed_config['trading_options']['MSG_DISCORD']
     
+    # Whether the bot should reinvest your profits or not.
+    REINVEST_PROFITS = parsed_config['trading_options']['REINVEST_PROFITS']
+
     # Functionality to "reset / restart" external signal modules
     RESTART_EXTSIGNALS = parsed_config['trading_options']['RESTART_EXTSIGNALS']
     EXTSIGNAL_MODULES = parsed_config['trading_options']['EXTSIGNAL_MODULES']
@@ -1278,6 +1377,7 @@ if __name__ == '__main__':
         DISCORD_WEBHOOK = load_discord_creds(parsed_creds)
 
     sell_all_coins = False
+    sell_specific_coin = False
 
     # Authenticate with the client, Ensure API key is good before continuing
     if AMERICAN_USER:
@@ -1344,6 +1444,9 @@ if __name__ == '__main__':
             if total_capital != total_capital_config:
                 historic_profit_incfees_perc = (historic_profit_incfees_total / total_capital_config) * 100
 
+    if REINVEST_PROFITS:
+        TRADE_TOTAL = total_capital / TRADE_SLOTS
+
     # rolling window of prices; cyclical queue
     historical_prices = [None] * (TIME_DIFFERENCE * RECHECK_INTERVAL)
     hsp_head = -1
@@ -1356,7 +1459,7 @@ if __name__ == '__main__':
         with open(coins_bought_file_path) as file:
                 coins_bought = json.load(file)
 
-    print('Press Ctrl-C to stop the script')
+    print(f'{txcolors.WARNING}Press Ctrl-C for more options / to stop the bot{txcolors.DEFAULT}')
 
     if not TEST_MODE:
         if not args.notimeout: # if notimeout skip this (fast for dev tests)
@@ -1409,15 +1512,75 @@ if __name__ == '__main__':
             # stop external signal threads
             stop_signal_threads()
 
-            # ask user if they want to sell all coins
-            print(f'\n\n\n')
-            sellall = input(f'{txcolors.WARNING}Program execution ended by user!\n\nDo you want to sell all coins (y/N)?{txcolors.DEFAULT}')
-            if sellall.upper() == "Y":
-                # sell all coins
-                sell_all('Program execution ended by user!')
-            
-            sys.exit(0)
+            while True:
+                #print_notimestamp(f'{txcolors.WARNING}\n--|  Binance Bot Menu  |--{txcolors.DEFAULT}')
+                print_notimestamp(f'\n[1] Exit (default option)')
+                print_notimestamp(f'\n[2] Sell All Coins')
+                print_notimestamp(f'\n[3] Sell A Specific Coin')
+                print_notimestamp(f'\n[4] Resume Bot')
+                print_notimestamp(f'\n{txcolors.WARNING}Please choose one of the above menu options ([1]. Exit):{txcolors.DEFAULT}')
+                menuoption = input()
 
+                if menuoption == "1" or menuoption == "":
+                    print_notimestamp('\n')
+                    sys.exit(0)
+                elif menuoption == "2":
+                    print_notimestamp('\n')
+                    sell_all('Sell All Coins menu option chosen!')
+                    print_notimestamp('\n')
+                elif menuoption == "3":
+                    while not menuoption.upper() == "N":
+                        # setup table
+                        my_table = PrettyTable()
+                        my_table.field_names = ["Symbol", "Volume", "Bought At", "Now At", "TP %", "SL %", "Change % (ex fees)", "Profit $", "Time Held"]
+                        my_table.align["Symbol"] = "l"
+                        my_table.align["Volume"] = "r"
+                        my_table.align["Bought At"] = "r"
+                        my_table.align["Now At"] = "r"
+                        my_table.align["TP %"] = "r"
+                        my_table.align["SL %"] = "r"
+                        my_table.align["Change % (ex fees)"] = "r"
+                        my_table.align["Profit $"] = "r"
+                        my_table.align["Time Held"] = "l"
+
+                        # get latest prices
+                        last_price = wrap_get_price()
+
+                        # display coins to sell
+                        #print('\n')
+                        for coin in coins_bought:
+                            time_held = timedelta(seconds=datetime.now().timestamp()-int(str(coins_bought[coin]['timestamp'])[:10]))
+                            change_perc = (float(last_price[coin]['price']) - float(coins_bought[coin]['bought_at']))/float(coins_bought[coin]['bought_at']) * 100
+                            ProfitExFees = float(last_price[coin]['price']) - float(coins_bought[coin]['bought_at'])
+                            my_table.add_row([f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{coin}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{float(coins_bought[coin]['volume']):.6f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{float(coins_bought[coin]['bought_at']):.6f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{float(last_price[coin]['price']):.6f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{float(coins_bought[coin]['take_profit']):.4f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{float(coins_bought[coin]['stop_loss']):.4f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{change_perc:.4f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{(float(coins_bought[coin]['volume'])*float(coins_bought[coin]['bought_at'])*change_perc)/100:.6f}{txcolors.DEFAULT}",
+                                            f"{txcolors.SELL_PROFIT if ProfitExFees >= 0. else txcolors.SELL_LOSS}{str(time_held).split('.')[0]}{txcolors.DEFAULT}"])
+                            
+                        my_table.sortby = 'Change % (ex fees)'
+                        if len(my_table._rows) > 0:
+                            print_notimestamp(my_table)
+                        else:
+                            break
+
+                        # ask for coin to sell
+                        print_notimestamp(f'{txcolors.WARNING}\nType in the Symbol you wish to sell, including pair (i.e. BTCUSDT) or type N to return to Menu (N)?{txcolors.DEFAULT}')
+                        menuoption = input()
+                        if menuoption == "":
+                            break
+
+                        sell_a_specific_coin(menuoption.upper())         
+                elif menuoption == "4":
+                   print_notimestamp(f'{txcolors.WARNING}\nResuming the bot...\n\n{txcolors.DEFAULT}')
+                   start_signal_threads()
+                   break
+
+            
     if not is_bot_running:
         if SESSION_TPSL_OVERRIDE:
             print(f'')
